@@ -1,6 +1,8 @@
 ## The MIT License (MIT)
 ##
 ## Copyright (c) 2016 Rokas Kupstys
+## Copyright (C) 2014-2016 Quinten Lansu
+## Copyright (C) 2006-2015 Andreas Rumpf and other contributors
 ##
 ## Permission is hereby granted, free of charge, to any person obtaining a copy
 ## of this software and associated documentation files (the "Software"), to deal
@@ -22,7 +24,12 @@
 
 type ustring* = distinct string
 
-type SomeText* = ustring|string|cstring|char
+when defined(ustringPythonic):
+    const oneOff = 1
+    const oneOn = 0
+else:
+    const oneOff = 0
+    const oneOn = 1
 
 proc utf8seek(text: cstring, textSize: csize, textStart: cstring, offset: csize, direction: csize): cstring {.importc.}
     ## UTF8_API const char* utf8seek(const char* text, size_t textSize, const char* textStart, off_t offset, int direction);
@@ -280,6 +287,14 @@ proc `$` *(x: ustring): string {.magic: "StrToStr", noSideEffect.}
 proc len*(x: ustring): int = utf8len(cstring(x))
     ## Gets length of ustring in characters
 
+proc offset(x: ustring, oft: int=high(int)): int =
+    if oft == high(int):
+        result = x.len - 1
+    elif oft < 0:
+        result = x.len - 1 + oft + oneOn
+    else:
+        result = oft
+
 proc blen*(x: ustring): int = string(x).len
     ## Gets length of ustring in bytes
 
@@ -300,14 +315,26 @@ proc GC_unref*(x: ustring) = GC_unref(string(x))
     ## see the documentation of `GC_ref`.
 
 converter toUString*(x: string): ustring = ustring(x)
-    ## Converts `string` type to ustring
+    ## Converts `string` type to `ustring`
+
+converter toUString*(x: cstring): ustring = ustring($x)
+    ## Converts `cstring` type to `ustring`
+
+converter toUString*(x: char): ustring = ustring($x)
+    ## Converts `cstring` type to `ustring`
+
+converter toString(x: ustring): string = string(x)
+    ## Converts `ustring` type to `string`
+
+converter toCString(x: ustring): cstring = cstring(x)
+    ## Converts `ustring` type to `cstring`
 
 proc posBytes(c: cstring, pos: int): int =
     ## Returns byte position of character `pos`
     var s = utf8seek(c, csize(c.len), c, csize(pos), 0)
     return c.len - s.len
 
-proc slice*(x: ustring, startPos: int=0, endPos: int=0): ustring =
+proc slice*(x: ustring, startPos: int=0, endPos: int=high(int)): ustring =
     ## Returns string slice `[startPos, endPos)`. `startPos` and `endPos` can be
     ## negative. If they are negative position is counted from the end of string.
     ## `startPos` = 0 means start of the string. `endPos` = 0 means end of the string.
@@ -316,36 +343,50 @@ proc slice*(x: ustring, startPos: int=0, endPos: int=0): ustring =
     var s = startPos
     if startPos < 0:
         s = x.len + startPos
-    if endPos <= 0:
+    if endPos < 0:
         e = x.len + endPos
+    elif endPos == high(int):
+        e = x.len
+    when not defined(ustringPythonic):
+        e += 1
     if e < s:
         raise (ref ValueError)()
     var sub = if s > 0: utf8seek(c, csize(c.len), c, csize(s), 0) else: c
     return ($sub).substr(0, sub.posBytes(e - s) - 1)
 
-proc `&`*(x: ustring, y: SomeText): ustring = string(x) & string(y)
+proc `&`*(x, y: ustring): ustring = string(x) & string(y)
     ## Concatenates `string`/`char` to ustring
 
-proc `&=`*(x: var ustring, y: SomeText) = string(x) &= string(y)
+proc `&=`*(x: var ustring, y: ustring) = string(x) &= string(y)
     ## Concatenates `string`/`char` to ustring
 
-proc `==`*(x: ustring, y: SomeText): bool = string(x) == $y
+proc `==`*(x, y: ustring): bool = string(x) == string(y)
     ## Checks for equality between `ustring` and `string` variables
 
 proc `[]`*(x: ustring, s: Slice[int]): ustring {.inline.} = x.slice(s.a, s.b)
     ## Returns slice of string `[s.a, s.b)`
 
-proc splice*(x: ustring, startPos: int, endPos: int, r: SomeText): ustring =
+proc splice*(x: ustring, startPos: int, endPos: int, r: ustring): ustring =
     ## Replaces `[startPos, endPos)` with `r`
-    return x.slice(0, startPos) & $r & x.slice(endPos)
+    when defined(ustringPythonic):
+        return x.slice(0, startPos) & $r & x.slice(endPos)
+    else:
+        var a: ustring
+        if startPos == 0:
+            a = ""
+        elif startPos > 0:
+            a = x.slice(0, startPos - 1)
+        else:
+            a = x.slice(0, startPos)
+        return a & $r & x.slice(endPos + 1)
 
-proc `[]=`*(x: var ustring, s: Slice[int], r: SomeText) {.inline.} =
+proc `[]=`*(x: var ustring, s: Slice[int], r: ustring) {.inline.} =
     ## Replaces `[startPos, endPos)` with `r` in `x`
     x = x.splice(s.a, s.b, $r)
 
-proc `[]=`*(x: var ustring, i: int, r: SomeText) {.inline.} =
+proc `[]=`*(x: var ustring, i: int, r: ustring) {.inline.} =
     ## Replaces `[startPos, endPos)` with `r` in `x`
-    x = x.splice(i, i + 1, $r)
+    x = x.splice(i, i + oneOff, $r)
 
 proc `~`*[T](a, b: T): Slice[T] {.noSideEffect, inline.} =
     ## Returns interval `Slice[T]`. Interval is open or closed based on how
@@ -401,7 +442,6 @@ when defined(windows) and not defined(useWinAnsi):
         var errors: csize = 0
         var need_count = widetoutf8(x, csize(x.len), nil, 0, addr(errors))
         if need_count == 0 or errors != 0:
-            echo errors
             raise (ref ValueError)()
         result = newString(need_count)
         var got_count = widetoutf8(x, csize(x.len), addr(result), need_count, addr(errors))
@@ -454,30 +494,28 @@ proc normalize*(x: ustring, flags: int): ustring =
     var errors: csize = 0
     var need_count = utf8normalize(cstring(x), csize(x.blen), nil, 0, csize(flags), addr(errors))
     if need_count == 0 or errors != 0:
-        echo errors, " ", flags
         raise (ref ValueError)()
     result = newString(need_count).toUString()
     var got_count = utf8normalize(cstring(x), csize(x.blen), cstring(result),  need_count, csize(flags), addr(errors))
     if errors != 0:
-        echo errors
         raise (ref ValueError)()
     assert got_count == need_count
 
 iterator items*(x: ustring): ustring =
     ## Loops ut-8 characters from the start.
     for i in 0 .. x.len-1:
-        yield x.slice(i, i+1)
+        yield x.slice(i, i + oneOff)
 
 proc `[]`(x: ustring, i: int): ustring =
     ## Returns utf-8 char at specified index `i`
     if i < 0:
         raise (ref ValueError)()
-    result = x.slice(i, i+1)
+    result = x.slice(i, i + oneOff)
 
 iterator ritems*(x: ustring): ustring =
     ## Loops utf-8 characters from the end.
-    for i in countdown(x.len-1, 0):
-        yield x.slice(i, i+1)
+    for i in countdown(x.len-oneOff, 0):
+        yield x.slice(i, i + oneOff)
 
 proc reversed*(x: ustring): ustring =
     ## Returns reversed string.
@@ -506,54 +544,171 @@ proc isAlphaNumeric*(x: ustring): bool = isCategory(x, UTF8_CATEGORY_ISALNUM)
     ## Returns ``true`` if ``x`` is made of alpha and/or numeric, ``false`` otherwise.
 
 proc isWhitespace*(x: ustring): bool = isCategory(x, UTF8_CATEGORY_ISSPACE)
+    ## Returns ``true`` if ``x`` is made of whitespace characters, ``false`` otherwise.
 
-when is_main_module:
+proc startsWith*(x: ustring, sub: ustring): bool = x[0..sub.len - oneOn] == sub
+    ## Returns ``true`` if ``x`` starts with substring ``sub``, ``false`` otherwise.
+
+proc endsWith*(x: ustring, sub: ustring): bool = x[x.len - sub.len..high(int)] == sub
+    ## Returns ``true`` if ``x`` starts with substring ``sub``, ``false`` otherwise.
+
+proc find*(x: ustring, sub: ustring, start: int=0): int =
+    ## Returns index of first occurrence of ``sub`` in ``x``, -1 if ``sub`` is not found. Search starts from beginning of string.
+    for i in x.offset(start) .. x.len - sub.len:
+        if x[i..i + sub.len - oneOn] == sub:
+            return i
+    return -1
+
+proc rfind*(x: ustring, sub: ustring, start: int=high(int)): int =
+    ## Returns index of first occurrence of ``sub`` in ``x``, -1 if ``sub`` is not found. Search starts from end of string.
+    for i in countdown(x.offset(start), 0):
+        if x[i..i + sub.len - oneOn] == sub:
+            return i
+    return -1
+
+proc contains*(x: ustring, sub: ustring): bool {.inline.} = x.find(sub) >= 0
+    ## Returns ``true`` if ``x`` contains substring ``sub``, ``false`` otherwise.
+
+proc replace*(x: ustring, find: ustring, replacement: ustring): ustring =
+    ## Replaces all occourences of ``find`` in ``x`` with ``replacement``.
+    result = x
+    var i = result.find(find)
+    while i >= 0:
+        result = result.splice(i, i + find.len - oneOn, replacement)
+        i = result.find(find)
+
+proc count*(x: ustring, sub: ustring, overlapping: bool = false): int =
+    ## Count the occurrences of a substring `sub` in the string `s`.
+    ## Overlapping occurrences of `sub` only count when `overlapping`
+    ## is set to true.
+    var i = 0
+    while true:
+        i = x.find(sub, i)
+        if i < 0:
+            break
+        if overlapping:
+            inc i
+        else:
+            i += sub.len
+        inc result
+
+iterator split*(x, sub: ustring): ustring =
+    var i, p = 0
+    while true:
+        p = i
+        i = x.find(sub, i)
+        if i < 0:
+            yield x[p..high(int)]
+            break
+        yield x[p..i - oneOn]
+        i += sub.len
+
+when isMainModule:
     var s = "ąčęėįšųū„“"
     var u: ustring = s
-    assert string(u) == $u
-    assert u.len == 10
-    assert u.blen == s.len
+    when defined(ustringPythonic):
+        doAssert u.offset(1) == 1
+        doAssert u.offset(-1) == 8
+        doAssert u.offset(-2) == 7
+        doAssert u.offset() == 9
+    else:
+        doAssert u.offset(1) == 1
+        doAssert u.offset(-1) == 9
+        doAssert u.offset(-2) == 8
+        doAssert u.offset() == 9
+    doAssert string(u) == $u
+    doAssert u.len == 10
+    doAssert u.blen == s.len
     block:
         var refcount = u.getRefcount()
-        assert refcount > 0
+        doAssert refcount > 0
         u.GC_ref()
-        assert u.getRefcount() == (refcount + 1)
+        doAssert u.getRefcount() == (refcount + 1)
         u.GC_unref()
-        assert u.getRefcount() == refcount
+        doAssert u.getRefcount() == refcount
 
-    assert u.slice(2) == "ęėįšųū„“"
-    assert u.slice(4, -2) == "įšųū"
-    assert u.slice(-4, -2) == "ųū"
-    try:
-        discard u.slice(-4, -6)
-        assert false, "slice() invalid parameter check failed"
-    except ValueError:
-        discard
-    assert u == s
-    assert u == cstring(s)
-    assert "a".toUString() == 'a'
-    assert u[1..^1] == "čęėįšųū„"
-    assert u[1~-1] == "čęėįšųū„"
-    assert u & u == "ąčęėįšųū„“ąčęėįšųū„“"
-    assert u.splice(2, 4, "?") == "ąč?įšųū„“"
+    doAssert u.slice(2) == "ęėįšųū„“"
+    when defined(ustringPythonic):
+        doAssert u.slice(4, -2) == "įšųū"
+        doAssert u.slice(-4, -2) == "ųū"
+        try:
+            discard u.slice(-4, -6)
+            doAssert false, "slice() invalid parameter check failed"
+        except ValueError:
+            discard
+        doAssert u[1..^1] == "čęėįšųū„"
+        doAssert u[1~-1] == "čęėįšųū„"
+        doAssert u.splice(2, 4, "?") == "ąč?įšųū„“"
+    else:
+        doAssert u.slice(4, -3) == "įšųū"
+        doAssert u.slice(-4, -3) == "ųū"
+        try:
+            discard u.slice(-4, -7)
+            doAssert false, "slice() invalid parameter check failed"
+        except ValueError:
+            discard
+        doAssert u[1..^2] == "čęėįšųū„"
+        doAssert u[1~-2] == "čęėįšųū„"
+        doAssert u.splice(2, 3, "?") == "ąč?įšųū„“"
+
+    doAssert u == s
+    doAssert u == cstring(s)
+    doAssert "a".toUString() == 'a'
+    doAssert u & u == "ąčęėįšųū„“ąčęėįšųū„“"
     block:
         var x = u
-        x[-5 ~ -1] = "!!!"
-        assert x == "ąčęėį!!!“"
+        when defined(ustringPythonic):
+            x[-5 ~ -1] = "!!!"
+        else:
+            x[-6 ~ -2] = "!!!"
+        doAssert x == "ąčęėį!!!“"
         x[1] = "我"
-        assert x == "ą我ęėį!!!“"
-        assert x[1] == "我"
-    assert "ąčęėįšųū".toUString().upper() == "ĄČĘĖĮŠŲŪ"
-    assert "ĄČĘĖĮŠŲŪ".toUString().lower() == "ąčęėįšųū"
-    assert u.title() == "Ąčęėįšųū„“"
-    assert "ĄČĘĖĮŠŲŪ".toUString().casefold() == "ąčęėįšųū"
-    assert "διαφορετικούς".toUString().normalize(UTF8_NORMALIZE_COMPOSE) == "διαφορετικούς"
-    assert u.reversed() == "“„ūųšįėęčą"
-    assert "ūųšįėęčą".toUString().isLower() == true
-    assert "Ąūųšįėęčą".toUString().isLower() == false
-    assert "ĄČĘĖĮŠŲŪ".toUString().isUpper() == true
-    assert "Ąūųšįėęčą".toUString().isUpper() == false
-    assert "Ąūųšįėęčą".toUString().isAlpha() == true
-    assert "12345".toUString().isNumeric() == true
-    assert "Ąūųšįėęčą12345".toUString().isNumeric() == false
-    assert "\r\t\n ".toUString().isWhitespace() == true
+        doAssert x == "ą我ęėį!!!“"
+        doAssert x[1] == "我"
+    doAssert "ąčęėįšųū".toUString().upper() == "ĄČĘĖĮŠŲŪ"
+    doAssert "ĄČĘĖĮŠŲŪ".toUString().lower() == "ąčęėįšųū"
+    doAssert u.title() == "Ąčęėįšųū„“"
+    doAssert "ĄČĘĖĮŠŲŪ".toUString().casefold() == "ąčęėįšųū"
+    doAssert "διαφορετικούς".toUString().normalize(UTF8_NORMALIZE_COMPOSE) == "διαφορετικούς"
+    doAssert u.reversed() == "“„ūųšįėęčą"
+    doAssert "ūųšįėęčą".toUString().isLower() == true
+    doAssert "Ąūųšįėęčą".toUString().isLower() == false
+    doAssert "ĄČĘĖĮŠŲŪ".toUString().isUpper() == true
+    doAssert "Ąūųšįėęčą".toUString().isUpper() == false
+    doAssert "Ąūųšįėęčą".toUString().isAlpha() == true
+    doAssert "12345".toUString().isNumeric() == true
+    doAssert "Ąūųšįėęčą12345".toUString().isNumeric() == false
+    doAssert "\r\t\n ".toUString().isWhitespace() == true
+    doAssert "ĄūųšįėęčąĄūųšįėęčą".toUString().find("š") == 3
+    doAssert "ĄūųšįėęčąĄūųšįėęčą".toUString().find("Ą", 1) == 9
+    doAssert "ĄūųšįėęčąĄūųšįėęčą".toUString().rfind("š") == 12
+    when defined(ustringPythonic):
+        doAssert "ĄūųšįėęčąĄūųšįėęčą".toUString().rfind("ą") == 17
+        doAssert "ĄūųšįėęčąĄūųšįėęčą".toUString().rfind("ą", -1) == 8
+    else:
+        doAssert "ĄūųšįėęčąĄūųšįėęčą".toUString().rfind("ą", -1) == 17
+        doAssert "ĄūųšįėęčąĄūųšįėęčą".toUString().rfind("ą", -2) == 8
+    doAssert "ĄūųšįėęčąĄūųšįėęčą".toUString().find("Ą") == 0
+    doAssert "ĄūųšįėęčąĄūųšįėęčą".toUString().rfind("ą") == 17
+    doAssert "ĄūųšįėęčąĄūųšįėęčą".toUString().rfind("測") == -1
+    doAssert "ėįš" in u
+    doAssert u.replace("ėįš", "δια") == "ąčęδιαųū„“"
+    doAssert u.replace("ū„“", "δια") == "ąčęėįšųδια"
+    doAssert u.replace("ąčę", "δια") == "διαėįšųū„“"
+    doAssert "ĄūųšįėęčąĄūųšįėęčą".toUString().count("ę") == 2
+    doAssert "ĄūųšįėęčąĄūųšįėęčą".toUString().count("šį") == 2
+    doAssert "ĄūųšįėęčąĄūųšįėęčą".toUString().count("δια") == 0
+    doAssert u.startsWith("ąčęė") == true
+    doAssert u.startsWith("šųū„“") == false
+    doAssert u.endsWith("ąčęė") == false
+    doAssert u.endsWith("šųū„“") == true
+    var i = 0
+    for x in u.split("ėį"):
+        if i == 0:
+            doAssert x == "ąčę"
+        elif i == 1:
+            doAssert x == "šųū„“"
+        else:
+            doAssert false, "Too many values"
+        inc i
+    echo "Tests ok", (when defined(ustringPythonic): " (pythonic)" else: "")
