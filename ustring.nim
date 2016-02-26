@@ -661,7 +661,7 @@ when isMainModule:
         doAssert u"\r\t\n ".isWhitespace() == true
         doAssert u"\r\t\n " == "\r\n\t "
     else:
-        doAssert "\r\t\n ".toUString().isWhitespace() == true
+        doAssert "\r\t\n ".u.isWhitespace() == true
     doAssert u"ĄūųšįėęčąĄūųšįėęčą".find("š") == 3
     doAssert u"ĄūųšįėęčąĄūųšįėęčą".find("Ą", 1) == 9
     doAssert u"ĄūųšįėęčąĄūųšįėęčą".rfind("š") == 12
@@ -684,7 +684,6 @@ when isMainModule:
     doAssert lc[p | (p <- u"ąčęėįšųū„“".split("ėį")), ustring] == @[u"ąčę", u"šųū„“"]
     doAssert lc[c | (c <- u"ąčęėįšųū„“".items()), ustring] == @[u"ą", u"č", u"ę", u"ė", u"į", u"š", u"ų", u"ū", u"„", u"“"]
     doAssert lc[c | (c <- u"ąčęėįšųū„“".ritems()), ustring] == @[u"“", u"„", u"ū", u"ų", u"š", u"į", u"ė", u"ę", u"č", u"ą"]
-    doAssert u"ąčęėįšųū„“"[1..-1] == u"ąčęėįšųū„“"[1..^2]
-    doAssert u"ąčęėįšųū„“".slice(1, -2) == u"ąčęėįšųū„“"[1..^2]
+    doAssert u"ąčęėįšųū„“".slice(1, -1) == u"ąčęėįšųū„“"[1..^2]
     doAssert u"ąčęėįšųū„“"[-3..-1] == u"ąčęėįšųū„“"[-3..^2]
     echo "Tests ok"
