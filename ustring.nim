@@ -22,6 +22,8 @@
 ## OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ## SOFTWARE.
 
+import macros
+
 type ustring* = distinct string
 
 template `..-`(a, b: expr): expr = a .. (if b == 0: int.high else: -b)
@@ -331,8 +333,85 @@ converter toString*(s: ustring): string = string(s)
 converter toCString*(s: ustring): cstring = cstring(s)
     ## Converts ``ustring`` type to ``cstring``
 
+template addSymbol(c: expr): expr =
+    unescaped.add(c)
+    inc i
+
+proc unescapeRawString(x: string): string {.compileTime.} =
+    ## Converts string litteral to ``ustring``.
+    ## Since string litteral prefixed with ``u`` is treated as raw string we unescape escaped characters at compile time.
+    var unescaped = newStringOfCap(x.blen)
+    var i = 0
+    while i < x.len:
+        if x[i] == '\\':
+            if i >= x.high:
+                error("closing \" expected")
+                break
+            case x[i + 1]
+            of 'n', 'N':
+                addSymbol("\n")
+            of 'r', 'R', 'c', 'C':
+                addSymbol('\r')
+            of 'l', 'L':
+                addSymbol('\l')
+            of 'f', 'F':
+                addSymbol('\f')
+            of 'e', 'E':
+                addSymbol('\e')
+            of 'a', 'A':
+                addSymbol('\a')
+            of 'b', 'B':
+                addSymbol('\b')
+            of 'v', 'V':
+                addSymbol('\v')
+            of 't', 'T':
+                addSymbol('\t')
+            of '\\':
+                addSymbol('\\')
+            of 'x', 'X':
+                addSymbol('\x')
+            of '0'..'9':
+                if (i + 2) < x.len:
+                    if x[i + 1] == '0' and x[i + 2] in {'0'..'9'}:
+                        warning("octal escape sequences do not exist; leading zero is ignored")
+                inc(i)
+                var xi = 0
+                while i <= x.high and x[i] in {'0'..'9'}:
+                    xi = (xi * 10) + (ord(x[i]) - ord('0'))
+                    inc(i)
+
+                if xi <= 255:
+                    unescaped.add(chr(xi))
+                else:
+                    error("invalid character constant")
+            else:
+                error("invalid character constant")
+        else:
+            unescaped.add(x[i])
+        inc i
+    return unescaped.toUString()
+
 proc u*[T](x: T): ustring = x.toUString()
     ## Converts supported types to ``ustring``
+
+macro u*(x: stmt): expr {.immediate.} =
+    var s: string
+    if x.kind == nnkRStrLit:
+        s = unescapeRawString($x)
+    else:
+        s = $x
+    # Call
+    #   DotExpr
+    #     StrLit asd
+    #     Ident !"toUString
+    return newStmtList(
+        newNimNode(nnkCall).add(
+            newNimNode(nnkDotExpr).add(
+                newStrLitNode(s),
+                newIdentNode("toUString")
+            )
+        )
+    )
 
 proc posBytes*(c: cstring, pos: int): int =
     ## Returns byte position of character ``pos``
@@ -656,12 +735,9 @@ when isMainModule:
     doAssert u"Ąūųšįėęčą".isAlpha() == true
     doAssert u"12345".isNumeric() == true
     doAssert u"Ąūųšįėęčą12345".isNumeric() == false
-    when false:
-        # Should work but does not due to Nim bug https://github.com/nim-lang/Nim/issues/3897
-        doAssert u"\r\t\n ".isWhitespace() == true
-        doAssert u"\r\t\n " == "\r\n\t "
-    else:
-        doAssert "\r\t\n ".u.isWhitespace() == true
+    doAssert u"\r\t\n ".isWhitespace() == true
+    doAssert u"\r\n\t \\\64" == "\r\n\t \\\64"
+    doAssert u"\r\n\t \\\64" == "\r\n\t \\\64".u
     doAssert u"ĄūųšįėęčąĄūųšįėęčą".find("š") == 3
     doAssert u"ĄūųšįėęčąĄūųšįėęčą".find("Ą", 1) == 9
     doAssert u"ĄūųšįėęčąĄūųšįėęčą".rfind("š") == 12
