@@ -26,7 +26,7 @@ import macros
 
 type ustring* = distinct string
 
-template `..-`(a, b: expr): expr = a .. (if b == 0: int.high else: -b)
+template `..-`(a, b: untyped): untyped = a .. (if b == 0: int.high else: -b)
     ## a shortcut for '.. -' to avoid the common gotcha that a space between
     ## '..' and '-' is required. It also adds shortcut for slices. Negative
     ## number as second slice parameter means "end of string", and ``0..-0``
@@ -38,16 +38,19 @@ proc utf8seek(text: cstring, textSize: csize, textStart: cstring, offset: csize,
 proc utf8len(text: cstring): csize {.importc.}
     ## UTF8_API size_t utf8len(const char* text);
 
-proc utf8casefold(input: cstring, inputSize: csize, target: cstring, targetSize: csize, errors: ptr csize): csize {.importc.}
+proc utf8envlocale(): csize {.importc.}
+    ## Returns the environment's locale as an enum value.
+
+proc utf8casefold(input: cstring, inputSize: csize, target: cstring, targetSize: csize, locale: csize, errors: ptr csize): csize {.importc.}
     ## UTF8_API size_t utf8casefold(const char* input, size_t inputSize, char* target, size_t targetSize, int32_t* errors);
 
-proc utf8toupper(input: cstring, inputSize: csize, target: cstring, targetSize: csize, errors: ptr csize): csize {.importc.}
+proc utf8toupper(input: cstring, inputSize: csize, target: cstring, targetSize: csize, locale: csize, errors: ptr csize): csize {.importc.}
     ## UTF8_API size_t utf8toupper(const char* input, size_t inputSize, char* target, size_t targetSize, int32_t* errors);
 
-proc utf8tolower(input: cstring, inputSize: csize, target: cstring, targetSize: csize, errors: ptr csize): csize {.importc.}
+proc utf8tolower(input: cstring, inputSize: csize, target: cstring, targetSize: csize, locale: csize, errors: ptr csize): csize {.importc.}
     ## UTF8_API size_t utf8tolower(const char* input, size_t inputSize, char* target, size_t targetSize, int32_t* errors);
 
-proc utf8totitle(input: cstring, inputSize: csize, target: cstring, targetSize: csize, errors: ptr csize): csize {.importc.}
+proc utf8totitle(input: cstring, inputSize: csize, target: cstring, targetSize: csize, locale: csize, errors: ptr csize): csize {.importc.}
     ## UTF8_API size_t utf8totitle(const char* input, size_t inputSize, char* target, size_t targetSize, int32_t* errors);
 
 const UTF8_NORMALIZE_COMPOSE* = 0x00000001
@@ -279,6 +282,21 @@ const UTF8_CATEGORY_ISXDIGIT* =
     ## Flag used for maintaining backwards compatibility with POSIX
     ## ``isxdigit`` function.
 
+const UTF8_LOCALE_DEFAULT = 0
+
+const UTF8_LOCALE_LITHUANIAN = 1
+    ## Changes behavior of the case mapping implementation when processing
+    ## specific code points. For more information, see here:
+    ## ftp://ftp.unicode.org/Public/UNIDATA/SpecialCasing.txt
+
+const UTF8_LOCALE_TURKISH_AND_AZERI_LATIN = 2
+    ## Changes behavior of the case mapping implementation when processing
+    ## specific code points. For more information, see here:
+    ## ftp://ftp.unicode.org/Public/UNIDATA/SpecialCasing.txt
+
+const UTF8_LOCALE_MAXIMUM = 3
+    ## Terminal value for locales. Valid locales do not exceed this value.
+
 proc utf8iscategory(input: cstring, inputSize: csize, flags: csize): csize {.importc.}
   ## UTF8_API size_t utf8iscategory(const char* input, size_t inputSize, size_t flags);
 
@@ -333,7 +351,7 @@ converter toString*(s: ustring): string = string(s)
 converter toCString*(s: ustring): cstring = cstring(s)
     ## Converts ``ustring`` type to ``cstring``
 
-template addSymbol(c: expr): expr =
+template addSymbol(c: untyped): untyped =
     unescaped.add(c)
     inc i
 
@@ -391,10 +409,7 @@ proc unescapeRawString(x: string): string {.compileTime.} =
         inc i
     return unescaped.toUString()
 
-proc u*[T](x: T): ustring = x.toUString()
-    ## Converts supported types to ``ustring``
-
-macro u*(x: stmt): expr {.immediate.} =
+macro u*(x: typed): untyped =
     var s: string
     if x.kind == nnkRStrLit:
         s = unescapeRawString($x)
@@ -490,7 +505,7 @@ proc upper*(s: ustring): ustring =
     ## Converts utf-8 string to upper case.
     result = newString(s.blen).toUString()
     var errors: csize = 0
-    discard utf8toupper(cstring(s), csize(s.blen), cstring(result), csize(s.blen), addr(errors))
+    discard utf8toupper(cstring(s), csize(s.blen), cstring(result), csize(s.blen), utf8envlocale(), addr(errors))
     if errors != 0:
         raise (ref ValueError)()
 
@@ -498,7 +513,7 @@ proc lower*(s: ustring): ustring =
     ## Converts utf-8 string to lower case.
     result = newString(s.blen).toUString()
     var errors: csize = 0
-    discard utf8tolower(cstring(s), csize(s.blen), cstring(result), csize(s.blen), addr(errors))
+    discard utf8tolower(cstring(s), csize(s.blen), cstring(result), csize(s.blen), utf8envlocale(), addr(errors))
     if errors != 0:
         raise (ref ValueError)()
 
@@ -506,7 +521,7 @@ proc title*(s: ustring): ustring =
     ## Converts utf-8 string to titlecase.
     result = newString(s.blen).toUString()
     var errors: csize = 0
-    discard utf8totitle(cstring(s), csize(s.blen), cstring(result), csize(s.blen), addr(errors))
+    discard utf8totitle(cstring(s), csize(s.blen), cstring(result), csize(s.blen), utf8envlocale(), addr(errors))
     if errors != 0:
         raise (ref ValueError)()
 
@@ -514,7 +529,7 @@ proc casefold*(s: ustring): ustring =
     ## Eliminates differences between code points case mapping.
     result = newString(s.blen).toUString()
     var errors: csize = 0
-    discard utf8casefold(cstring(s), csize(s.blen), cstring(result), csize(s.blen), addr(errors))
+    discard utf8casefold(cstring(s), csize(s.blen), cstring(result), csize(s.blen), utf8envlocale(), addr(errors))
     if errors != 0:
         raise (ref ValueError)()
 
