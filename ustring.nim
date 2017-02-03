@@ -22,6 +22,23 @@
 ## OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ## SOFTWARE.
 
+when defined(ustringUtf8rewindPath):
+    const ustringUtf8rewindPath {.strdefine.}: string = ""
+    when defined(vcc) or (defined(icl) and defined(windows)):
+        const prefix = "/"
+    else:
+        const prefix = "-"
+    {.passC: prefix & "I" & ustringUtf8rewindPath & "/include/utf8rewind".}
+    {.compile: ustringUtf8rewindPath & "/source/utf8rewind.c".}
+    {.compile: ustringUtf8rewindPath & "/source/unicodedatabase.c".}
+    {.compile: ustringUtf8rewindPath & "/source/internal/casemapping.c".}
+    {.compile: ustringUtf8rewindPath & "/source/internal/codepoint.c".}
+    {.compile: ustringUtf8rewindPath & "/source/internal/composition.c".}
+    {.compile: ustringUtf8rewindPath & "/source/internal/database.c".}
+    {.compile: ustringUtf8rewindPath & "/source/internal/decomposition.c".}
+    {.compile: ustringUtf8rewindPath & "/source/internal/seeking.c".}
+    {.compile: ustringUtf8rewindPath & "/source/internal/streaming.c".}
+
 import macros
 
 type ustring* = distinct string
@@ -282,19 +299,19 @@ const UTF8_CATEGORY_ISXDIGIT* =
     ## Flag used for maintaining backwards compatibility with POSIX
     ## ``isxdigit`` function.
 
-const UTF8_LOCALE_DEFAULT = 0
+const UTF8_LOCALE_DEFAULT* = 0
 
-const UTF8_LOCALE_LITHUANIAN = 1
+const UTF8_LOCALE_LITHUANIAN* = 1
     ## Changes behavior of the case mapping implementation when processing
     ## specific code points. For more information, see here:
     ## ftp://ftp.unicode.org/Public/UNIDATA/SpecialCasing.txt
 
-const UTF8_LOCALE_TURKISH_AND_AZERI_LATIN = 2
+const UTF8_LOCALE_TURKISH_AND_AZERI_LATIN* = 2
     ## Changes behavior of the case mapping implementation when processing
     ## specific code points. For more information, see here:
     ## ftp://ftp.unicode.org/Public/UNIDATA/SpecialCasing.txt
 
-const UTF8_LOCALE_MAXIMUM = 3
+const UTF8_LOCALE_MAXIMUM* = 3
     ## Terminal value for locales. Valid locales do not exceed this value.
 
 proc utf8iscategory(input: cstring, inputSize: csize, flags: csize): csize {.importc.}
