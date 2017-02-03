@@ -15,5 +15,12 @@ Features
 * Pythonic string slicing with negative indexes
 * String manipulation functions using inclusive ranges
 
+Usage
+=====
+
+* `nimble install ustring`
+* Download [utf8rewind](https://bitbucket.org/knight666/utf8rewind) and extract.
+* Build your project with `-d:ustringUtf8rewindPath=/path/to/utf8rewind`
+
 Warning:
 This is little-tested unfinished code which probably is inefficient, has bugs and is subject to change. Use at your own risk.
