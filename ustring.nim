@@ -43,6 +43,24 @@ import macros
 
 type ustring* = distinct string
 
+type UnicodeError* = ref object of ValueError
+    error: int
+
+const UTF8_VERSION_MAJOR* = 1
+    ## The major version number of this release.
+
+const UTF8_VERSION_MINOR* = 5
+    ## The minor version number of this release.
+
+const UTF8_VERSION_BUGFIX* = 1
+    ## The bugfix version number of this release.
+
+const UTF8_VERSION* = UTF8_VERSION_MAJOR * 10000 + UTF8_VERSION_MINOR * 100 + UTF8_VERSION_BUGFIX
+    ## The version number as an integer.
+
+const UTF8_VERSION_STRING* = $UTF8_VERSION_MAJOR & "." & $UTF8_VERSION_MINOR & "." & $UTF8_VERSION_BUGFIX
+    ## The verion number as a string.
+
 template `..-`(a, b: untyped): untyped = a .. (if b == 0: int.high else: -b)
     ## a shortcut for '.. -' to avoid the common gotcha that a space between
     ## '..' and '-' is required. It also adds shortcut for slices. Negative
@@ -299,7 +317,27 @@ const UTF8_CATEGORY_ISXDIGIT* =
     ## Flag used for maintaining backwards compatibility with POSIX
     ## ``isxdigit`` function.
 
+
+const UTF8_ERR_NONE* = 0
+    ## No errors.
+
+const UTF8_ERR_INVALID_DATA* = -1
+    ## Input data is invalid.
+
+const UTF8_ERR_INVALID_FLAG* = -2
+    ## Input flag is invalid.
+
+const UTF8_ERR_NOT_ENOUGH_SPACE* = -3
+    ## Not enough space in buffer to store result.
+
+const UTF8_ERR_OVERLAPPING_PARAMETERS* = -4
+    ## Input and output buffers overlap in memory.
+
+const UTF8_ERR_INVALID_LOCALE* = -5
+    ## Invalid locale specified.
+
 const UTF8_LOCALE_DEFAULT* = 0
+    ## Used for text unaffected by changes in locale.
 
 const UTF8_LOCALE_LITHUANIAN* = 1
     ## Changes behavior of the case mapping implementation when processing
@@ -479,7 +517,7 @@ proc slice*(s: ustring, first: int, last: int): ustring =
     if last < 0:
         e -= 1
     if e < st:
-        raise (ref ValueError)()
+        raise UnicodeError(msg: "Start position is further than end position")
     return s.substr(s.posBytes(st), s.posBytes(e) + s.charLen(e) - 1)
 
 proc slice*(s: ustring, slice: Slice[int]): ustring {.inline.} = s.slice(slice.a, slice.b)
@@ -518,55 +556,57 @@ proc `[]=`*(s: var ustring, slice: Slice[int], replacement: ustring) {.inline.} 
 proc `[]=`*(s: var ustring, i: int, replacement: ustring) {.inline.} = s = s.splice(i, i, replacement)
     ## Replaces character at position ``i`` with ``replacement`` in ``s``.
 
-proc upper*(s: ustring): ustring =
+proc upper*(s: ustring, locale: int=utf8envlocale()): ustring =
     ## Converts utf-8 string to upper case.
     result = newString(s.blen).toUString()
     var errors: csize = 0
-    discard utf8toupper(cstring(s), csize(s.blen), cstring(result), csize(s.blen), utf8envlocale(), addr(errors))
+    discard utf8toupper(cstring(s), csize(s.blen), cstring(result), csize(s.blen), locale, addr(errors))
     if errors != 0:
-        raise (ref ValueError)()
+        raise UnicodeError(error: errors)
 
-proc lower*(s: ustring): ustring =
+proc lower*(s: ustring, locale: int=utf8envlocale()): ustring =
     ## Converts utf-8 string to lower case.
     result = newString(s.blen).toUString()
     var errors: csize = 0
-    discard utf8tolower(cstring(s), csize(s.blen), cstring(result), csize(s.blen), utf8envlocale(), addr(errors))
+    discard utf8tolower(cstring(s), csize(s.blen), cstring(result), csize(s.blen), locale, addr(errors))
     if errors != 0:
-        raise (ref ValueError)()
+        raise UnicodeError(error: errors)
 
-proc title*(s: ustring): ustring =
+proc title*(s: ustring, locale: int=utf8envlocale()): ustring =
     ## Converts utf-8 string to titlecase.
     result = newString(s.blen).toUString()
     var errors: csize = 0
-    discard utf8totitle(cstring(s), csize(s.blen), cstring(result), csize(s.blen), utf8envlocale(), addr(errors))
+    discard utf8totitle(cstring(s), csize(s.blen), cstring(result), csize(s.blen), locale, addr(errors))
     if errors != 0:
-        raise (ref ValueError)()
+        raise UnicodeError(error: errors)
 
-proc casefold*(s: ustring): ustring =
+proc casefold*(s: ustring, locale: int=utf8envlocale()): ustring =
     ## Eliminates differences between code points case mapping.
     result = newString(s.blen).toUString()
     var errors: csize = 0
-    discard utf8casefold(cstring(s), csize(s.blen), cstring(result), csize(s.blen), utf8envlocale(), addr(errors))
+    discard utf8casefold(cstring(s), csize(s.blen), cstring(result), csize(s.blen), locale, addr(errors))
     if errors != 0:
-        raise (ref ValueError)()
+        raise UnicodeError(error: errors)
 
 proc isNormalized*(s: ustring, flags: int): bool =
     ## Checks if utf-8 string is normalized.
     var errors: csize = 0
     result = utf8isnormalized(cstring(s), csize(s.blen), csize(flags), addr(errors)) != 0
     if errors != 0:
-        raise (ref ValueError)()
+        raise UnicodeError(error: errors)
 
 proc normalize*(s: ustring, flags: int): ustring =
     ## Normalizes utf-8 string.
     var errors: csize = 0
     var need_count = utf8normalize(cstring(s), csize(s.blen), nil, 0, csize(flags), addr(errors))
-    if need_count == 0 or errors != 0:
-        raise (ref ValueError)()
+    if errors != 0:
+        raise UnicodeError(error: errors)
+    if need_count == 0:
+        return ""
     result = newString(need_count).toUString()
     var got_count = utf8normalize(cstring(s), csize(s.blen), cstring(result),  need_count, csize(flags), addr(errors))
     if errors != 0:
-        raise (ref ValueError)()
+        raise UnicodeError(error: errors)
     assert got_count == need_count
 
 iterator items*(s: ustring): ustring =
@@ -686,24 +726,28 @@ when defined(windows) and not defined(useWinAnsi):
     converter toWString(s: ustring): WideCString =
         var errors: csize = 0
         var need_count = utf8towide(cstring(s), csize(s.blen), nil, 0, addr(errors))
-        if need_count == 0 or errors != 0:
-            raise (ref ValueError)()
+        if errors != 0:
+            raise UnicodeError(error: errors)
+        if need_count == 0:
+            return ""
         unsafeNew(result, need_count * sizeof(Utf16Char))
         var got_count = utf8towide(cstring(s), csize(s.blen), result, need_count, addr(errors))
         if errors != 0:
-            raise (ref ValueError)()
+            raise UnicodeError(error: errors)
         assert got_count == need_count
         result[need_count] = Utf16Char(0)
 
     converter fromWString(x: WideCString): ustring =
         var errors: csize = 0
         var need_count = widetoutf8(x, csize(s.len), nil, 0, addr(errors))
-        if need_count == 0 or errors != 0:
-            raise (ref ValueError)()
+        if errors != 0:
+            raise UnicodeError(error: errors)
+        if need_count == 0:
+            return ""
         result = newString(need_count)
         var got_count = widetoutf8(x, csize(s.len), addr(result), need_count, addr(errors))
         if errors != 0:
-            raise (ref ValueError)()
+            raise UnicodeError(error: errors)
         assert got_count == need_count
         result[need_count] = '\0'
 
@@ -741,7 +785,7 @@ when isMainModule:
     try:
         discard u"ąčęėįšųū„“".slice(-4, -6)
         doAssert false, "slice() invalid parameter check failed"
-    except ValueError:
+    except UnicodeError:
         discard
 
     doAssert u"ąčęėįšųū„“".splice(0, 4, "?") == "?šųū„“"

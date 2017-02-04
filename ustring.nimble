@@ -1,11 +1,11 @@
 # Package
 
-version       = "0.2.0"
+version       = "0.2.1"
 author        = "Rokas Kupstys"
 description   = "utf-8 string"
 license       = "MIT"
-installDirs   = "utf8rewind"
-installFiles  = "ustring.nim"
+installDirs   = @["utf8rewind"]
+installFiles  = @["ustring.nim"]
 
 # Dependencies
 
