@@ -22,22 +22,22 @@
 ## OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ## SOFTWARE.
 
-when defined(ustringUtf8rewindPath):
-    const ustringUtf8rewindPath {.strdefine.}: string = ""
+when not defined(ustringExternalUtf8Rewind):
+    const ustringUtf8RewindPath {.strdefine.}: string = "./utf8rewind"
     when defined(vcc) or (defined(icl) and defined(windows)):
         const prefix = "/"
     else:
         const prefix = "-"
-    {.passC: prefix & "I" & ustringUtf8rewindPath & "/include/utf8rewind".}
-    {.compile: ustringUtf8rewindPath & "/source/utf8rewind.c".}
-    {.compile: ustringUtf8rewindPath & "/source/unicodedatabase.c".}
-    {.compile: ustringUtf8rewindPath & "/source/internal/casemapping.c".}
-    {.compile: ustringUtf8rewindPath & "/source/internal/codepoint.c".}
-    {.compile: ustringUtf8rewindPath & "/source/internal/composition.c".}
-    {.compile: ustringUtf8rewindPath & "/source/internal/database.c".}
-    {.compile: ustringUtf8rewindPath & "/source/internal/decomposition.c".}
-    {.compile: ustringUtf8rewindPath & "/source/internal/seeking.c".}
-    {.compile: ustringUtf8rewindPath & "/source/internal/streaming.c".}
+    {.passC: prefix & "I" & ustringUtf8RewindPath & "/include/utf8rewind".}
+    {.compile: ustringUtf8RewindPath & "/source/utf8rewind.c".}
+    {.compile: ustringUtf8RewindPath & "/source/unicodedatabase.c".}
+    {.compile: ustringUtf8RewindPath & "/source/internal/casemapping.c".}
+    {.compile: ustringUtf8RewindPath & "/source/internal/codepoint.c".}
+    {.compile: ustringUtf8RewindPath & "/source/internal/composition.c".}
+    {.compile: ustringUtf8RewindPath & "/source/internal/database.c".}
+    {.compile: ustringUtf8RewindPath & "/source/internal/decomposition.c".}
+    {.compile: ustringUtf8RewindPath & "/source/internal/seeking.c".}
+    {.compile: ustringUtf8RewindPath & "/source/internal/streaming.c".}
 
 import macros
 

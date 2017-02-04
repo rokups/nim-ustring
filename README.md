@@ -19,8 +19,11 @@ Usage
 =====
 
 * `nimble install ustring`
-* Download [utf8rewind](https://bitbucket.org/knight666/utf8rewind) and extract.
-* Build your project with `-d:ustringUtf8rewindPath=/path/to/utf8rewind`
 
-Warning:
-This is little-tested unfinished code which probably is inefficient, has bugs and is subject to change. Use at your own risk.
+If you wish to use custom utf8rewind library:
+
+* Build your project with `-d:ustringUtf8RewindPath=/path/to/utf8rewind-source`
+
+If you wish to use external utf8rewind library (provided by your package manager for example):
+
+* Build with `-d:ustringExternalUtf8Rewind`
