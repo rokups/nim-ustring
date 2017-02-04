@@ -23,7 +23,11 @@
 ## SOFTWARE.
 
 when not defined(ustringExternalUtf8Rewind):
-    const ustringUtf8RewindPath {.strdefine.}: string = "./utf8rewind"
+    when defined(ustringNoNimble):
+        const ustringPath = "."
+    else:
+        const ustringPath = gorge("nimble path ustring")
+    const ustringUtf8RewindPath {.strdefine.}: string = ustringPath & "/utf8rewind"
     when defined(vcc) or (defined(icl) and defined(windows)):
         const prefix = "/"
     else:
