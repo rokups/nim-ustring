@@ -528,6 +528,25 @@ proc slice*(s: ustring, slice: Slice[int]): ustring {.inline.} = s.slice(slice.a
     ## Returns string slice ``[slice.a, slice.b]``. ``first`` and ``last`` can be
     ## negative. If they are negative position is counted from the end of string.
 
+
+proc substr*(s: ustring, first = 0): string =
+    ## copies a slice of `s` into a new string and returns this new
+    ## string. The bounds `first` and `last` denote the indices of
+    ## the first and last characters that shall be copied. If ``last``
+    ## is omitted, it is treated as ``high(s)``. If ``last >= s.len``, ``s.len``
+    ## is used instead: This means ``substr`` can also be used to `cut`:idx:
+    ## or `limit`:idx: a string's length.
+    return s.slice(first)
+
+proc substr*(s: ustring, first, last: int): string =
+    ## copies a slice of `s` into a new string and returns this new
+    ## string. The bounds `first` and `last` denote the indices of
+    ## the first and last characters that shall be copied. If ``last``
+    ## is omitted, it is treated as ``high(s)``. If ``last >= s.len``, ``s.len``
+    ## is used instead: This means ``substr`` can also be used to `cut`:idx:
+    ## or `limit`:idx: a string's length.
+    return s.slice(first, last)
+
 proc `[]`*(s: ustring, slice: Slice[int]): ustring {.inline.} = s.slice(slice)
     ## Returns string slice ``[slice.a, slice.b]``.
 
@@ -842,4 +861,8 @@ when isMainModule:
     doAssert lc[c | (c <- u"ąčęėįšųū„“".ritems()), ustring] == @[u"“", u"„", u"ū", u"ų", u"š", u"į", u"ė", u"ę", u"č", u"ą"]
     doAssert u"ąčęėįšųū„“".slice(1, -1) == u"ąčęėįšųū„“"[1..^2]
     doAssert u"ąčęėįšųū„“"[-3..-1] == u"ąčęėįšųū„“"[-3..^2]
+    doAssert substr(u"abcdefgh", 3) == substr("abcdefgh", 3)
+    doAssert substr(u"abcdefgh", 1, 3) == substr("abcdefgh", 1, 3)
+    doAssert substr(u"ąčęėįšųū„“", 3) == "ėįšųū„“"
+    doAssert substr(u"ąčęėįšųū„“", 1, 3) == "čęė"
     echo "Tests ok"
