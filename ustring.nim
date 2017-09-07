@@ -509,7 +509,7 @@ proc `==`*(a, b: ustring): bool = string(a) == string(b)
 proc `==`*(a: ustring, b: string): bool = string(a) == b
     ## Checks for equality between ``ustring`` and ``string`` variables
 
-proc slice*(s: ustring, first: int): ustring = s.substr(s.posBytes(s.offset(first)), s.high)
+proc slice*(s: ustring, first: int): ustring = s.substr(s.posBytes(s.offset(first)), string(s).high)
     ## Returns string slice ``[fist, s.high]``. ``first`` can be negative in which case it will count positions from
     ## the end, ``-1`` being ``s.len - 1``.
 

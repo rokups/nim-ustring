@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.2.3"
+version       = "0.2.4"
 author        = "Rokas Kupstys"
 description   = "utf-8 string"
 license       = "MIT"
