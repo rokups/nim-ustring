@@ -383,10 +383,6 @@ proc getRefcount*(s: ustring): int = getRefcount(string(s))
     ## retrieves the reference count of an heap-allocated object. The
     ## value is implementation-dependent.
 
-proc isNil*(s: ustring): bool = string(s).isNil
-    ## Fast check whether ``s`` is nil. This is sometimes more efficient than
-    ## ``== nil``.
-
 proc GC_ref*(s: ustring) = GC_ref(string(s))
     ## marks the object ``s`` as referenced, so that it will not be freed until
     ## it is unmarked via ``GC_unref``. If called n-times for the same object ``s``,
@@ -509,6 +505,9 @@ proc `==`*(a, b: ustring): bool = string(a) == string(b)
 proc `==`*(a: ustring, b: string): bool = string(a) == b
     ## Checks for equality between ``ustring`` and ``string`` variables
 
+proc `==`*(a: string, b: ustring): bool = a == string(b)
+    ## Checks for equality between ``ustring`` and ``string`` variables
+
 proc slice*(s: ustring, first: int): ustring = s.substr(s.posBytes(s.offset(first)), string(s).high)
     ## Returns string slice ``[fist, s.high]``. ``first`` can be negative in which case it will count positions from
     ## the end, ``-1`` being ``s.len - 1``.
@@ -528,6 +527,9 @@ proc slice*(s: ustring, slice: Slice[int]): ustring {.inline.} = s.slice(slice.a
     ## Returns string slice ``[slice.a, slice.b]``. ``first`` and ``last`` can be
     ## negative. If they are negative position is counted from the end of string.
 
+proc slice*(s: ustring, slice: HSlice[int, BackwardsIndex]): ustring {.inline.} = s.slice(slice.a, len(s) - int(slice.b))
+    ## Returns string slice ``[slice.a, slice.b]``. ``first`` and ``last`` can be
+    ## negative. If they are negative position is counted from the end of string.
 
 proc substr*(s: ustring, first = 0): string =
     ## copies a slice of `s` into a new string and returns this new
@@ -548,6 +550,9 @@ proc substr*(s: ustring, first, last: int): string =
     return s.slice(first, last)
 
 proc `[]`*(s: ustring, slice: Slice[int]): ustring {.inline.} = s.slice(slice)
+    ## Returns string slice ``[slice.a, slice.b]``.
+
+proc `[]`*(s: ustring, slice: HSlice[int, BackwardsIndex]): ustring {.inline.} = s.slice(slice)
     ## Returns string slice ``[slice.a, slice.b]``.
 
 proc `[]`*(s: ustring, i: int): ustring =
@@ -573,7 +578,13 @@ proc splice*(s: ustring, first: int, last: int, replacement: ustring): ustring {
 proc splice*(s: ustring, slice: Slice[int], replacement: ustring): ustring {.inline.} = s.splice(slice.a, slice.b, replacement)
     ## Replaces ``[slice.a, slice.b]`` with ``replacement``.
 
+proc splice*(s: ustring, slice: HSlice[int, BackwardsIndex], replacement: ustring): ustring {.inline.} = s.splice(slice.a, len(s) - int(slice.b), replacement)
+    ## Replaces ``[slice.a, slice.b]`` with ``replacement``.
+
 proc `[]=`*(s: var ustring, slice: Slice[int], replacement: ustring) {.inline.} = s = s.splice(slice, replacement)
+    ## Replaces ``[slice.a, slice.b]`` with ``replacement`` in ``s``.
+
+proc `[]=`*(s: var ustring, slice: HSlice[int, BackwardsIndex], replacement: ustring) {.inline.} = s = s.splice(slice, replacement)
     ## Replaces ``[slice.a, slice.b]`` with ``replacement`` in ``s``.
 
 proc `[]=`*(s: var ustring, i: int, replacement: ustring) {.inline.} = s = s.splice(i, i, replacement)
@@ -776,7 +787,7 @@ when defined(windows) and not defined(useWinAnsi):
 
 
 when isMainModule:
-    import future
+    import sugar
     doAssert u"abc".charLen(1) == 1
     doAssert u"ačc".charLen(1) == 2
     doAssert "abcdefgh"[1..^2] == u"abcdefgh"[1..^2]
@@ -816,7 +827,7 @@ when isMainModule:
     doAssert u"ąčęėįšųū„“".splice(-8, 4, "?") == "ąč?šųū„“"
     block:
         var x = u"ąčęėįšųū„“"
-        x[-5..-1] = "!!!"
+        x[-5..-1] = u"!!!"
         doAssert x == "ąčęėį!!!“"
         x[1] = "我"
         doAssert x == "ą我ęėį!!!“"
