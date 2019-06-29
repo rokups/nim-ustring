@@ -65,12 +65,6 @@ const UTF8_VERSION* = UTF8_VERSION_MAJOR * 10000 + UTF8_VERSION_MINOR * 100 + UT
 const UTF8_VERSION_STRING* = $UTF8_VERSION_MAJOR & "." & $UTF8_VERSION_MINOR & "." & $UTF8_VERSION_BUGFIX
     ## The verion number as a string.
 
-template `..-`(a, b: untyped): untyped = a .. (if b == 0: int.high else: -b)
-    ## a shortcut for '.. -' to avoid the common gotcha that a space between
-    ## '..' and '-' is required. It also adds shortcut for slices. Negative
-    ## number as second slice parameter means "end of string", and ``0..-0``
-    ## will match entire string.
-
 proc utf8seek(text: cstring, textSize: csize, textStart: cstring, offset: csize, direction: csize): cstring {.importc.}
     ## UTF8_API const char* utf8seek(const char* text, size_t textSize, const char* textStart, off_t offset, int direction);
 
@@ -365,23 +359,16 @@ proc `$`*(s: ustring): string {.magic: "StrToStr", noSideEffect.}
 proc len*(s: ustring): int = utf8len(cstring(s))
     ## Gets length of ustring in characters
 
-proc uhigh*(s: ustring): int = string(s).low + s.len - 1
+proc high*(s: ustring): int = string(s).low + s.len - 1
     ## Returns highest possible utf-8 character index
 
-proc offset(s: ustring, oft: int=int.high): int =
-    if oft == int.high:
-        result = s.len
-    elif oft < 0:
-        result = s.len + oft
-    else:
-        result = oft
+proc index(s: ustring; oft: BackwardsIndex): int =
+    result = max(s.len - int(oft), 0)
+
+proc index(s: ustring; oft: int): int = min(oft, s.len - 1)
 
 proc blen*(s: ustring): int = string(s).len
     ## Gets length of ustring in bytes
-
-proc getRefcount*(s: ustring): int = getRefcount(string(s))
-    ## retrieves the reference count of an heap-allocated object. The
-    ## value is implementation-dependent.
 
 proc GC_ref*(s: ustring) = GC_ref(string(s))
     ## marks the object ``s`` as referenced, so that it will not be freed until
@@ -394,10 +381,10 @@ proc GC_unref*(s: ustring) = GC_unref(string(s))
 converter toUString*(s: string): ustring = ustring(s)
     ## Converts ``string`` type to ``ustring``
 
-converter toUString*(s: cstring): ustring = $s
+converter toUString*(s: cstring): ustring = ustring($s)
     ## Converts ``cstring`` type to ``ustring``
 
-converter toUString*(c: char): ustring = $c
+converter toUString*(c: char): ustring = ustring($c)
     ## Converts ``cstring`` type to ``ustring``
 
 converter toString*(s: ustring): string = string(s)
@@ -413,7 +400,7 @@ template addSymbol(c: untyped): untyped =
 proc unescapeRawString(x: string): string {.compileTime.} =
     ## Converts string litteral to ``ustring``.
     ## Since string litteral prefixed with ``u`` is treated as raw string we unescape escaped characters at compile time.
-    var unescaped = newStringOfCap(x.blen)
+    var unescaped = newStringOfCap(x.len)
     var i = 0
     while i < x.len:
         if x[i] == '\\':
@@ -421,28 +408,26 @@ proc unescapeRawString(x: string): string {.compileTime.} =
                 error("closing \" expected")
                 break
             case x[i + 1]
-            of 'n', 'N':
+            of 'n', 'l':
                 addSymbol("\n")
-            of 'r', 'R', 'c', 'C':
+            of 'r', 'c':
                 addSymbol('\r')
-            of 'l', 'L':
-                addSymbol('\l')
-            of 'f', 'F':
+            of 'f':
                 addSymbol('\f')
-            of 'e', 'E':
+            of 'e':
                 addSymbol('\e')
-            of 'a', 'A':
+            of 'a':
                 addSymbol('\a')
-            of 'b', 'B':
+            of 'b':
                 addSymbol('\b')
-            of 'v', 'V':
+            of 'v':
                 addSymbol('\v')
-            of 't', 'T':
+            of 't':
                 addSymbol('\t')
             of '\\':
                 addSymbol('\\')
-            of 'x', 'X':
-                addSymbol('\x')
+            # of 'x':
+            #     addSymbol('\x')
             of '0'..'9':
                 if (i + 2) < x.len:
                     if x[i + 1] == '0' and x[i + 2] in {'0'..'9'}:
@@ -462,7 +447,7 @@ proc unescapeRawString(x: string): string {.compileTime.} =
         else:
             unescaped.add(x[i])
         inc i
-    return unescaped.toUString()
+    return unescaped.ustring
 
 macro u*(x: typed): untyped =
     var s: string
@@ -493,8 +478,8 @@ proc charLen*(c: cstring, pos: int): int =
     var s2 = utf8seek(s1, csize(s1.len), s1, csize(1), 0)
     return s1.len - s2.len
 
-proc `&`*(a, b: ustring): ustring = string(a) & string(b)
-    ## Concatenates ``string``/``char`` to ustring
+# proc `&`*(a, b: ustring): ustring = string(a) & string(b)
+#     ## Concatenates ``string``/``char`` to ustring
 
 proc `&=`*(a: var ustring, b: ustring) = string(a) &= string(b)
     ## Concatenates ``string``/``char`` to ustring
@@ -508,30 +493,21 @@ proc `==`*(a: ustring, b: string): bool = string(a) == b
 proc `==`*(a: string, b: ustring): bool = a == string(b)
     ## Checks for equality between ``ustring`` and ``string`` variables
 
-proc slice*(s: ustring, first: int): ustring = s.substr(s.posBytes(s.offset(first)), string(s).high)
-    ## Returns string slice ``[fist, s.high]``. ``first`` can be negative in which case it will count positions from
-    ## the end, ``-1`` being ``s.len - 1``.
+proc slice*[T, U](s: ustring; first: T; last: U): ustring =
+    ## Returns string slice ``[first, last]``.
+    let st = s.index(first)
+    let en = s.index(last)
+    if en < st:
+        raise newException(ValueError, "Start position is further than end position")
+    return string(s).substr(s.posBytes(st), s.posBytes(en) + s.charLen(en) - 1)
 
-proc slice*(s: ustring, first: int, last: int): ustring =
-    ## Returns string slice ``[first, last]``. ``first`` and ``last`` can be
-    ## negative. If they are negative position is counted from the end of string.
-    var st = s.offset(first)
-    var e = s.offset(last)
-    if last < 0:
-        e -= 1
-    if e < st:
-        raise UnicodeError(msg: "Start position is further than end position")
-    return s.substr(s.posBytes(st), s.posBytes(e) + s.charLen(e) - 1)
+proc slice*[T](s: ustring, first: T): ustring = s.slice(first, s.high)
+    ## Returns string slice ``[first, last]``.
 
-proc slice*(s: ustring, slice: Slice[int]): ustring {.inline.} = s.slice(slice.a, slice.b)
-    ## Returns string slice ``[slice.a, slice.b]``. ``first`` and ``last`` can be
-    ## negative. If they are negative position is counted from the end of string.
+proc slice*[T, U](s: ustring, slice: HSlice[T, U]): ustring {.inline.} = s.slice(slice.a, slice.b)
+    ## Returns string slice ``[slice.a, slice.b]``.
 
-proc slice*(s: ustring, slice: HSlice[int, BackwardsIndex]): ustring {.inline.} = s.slice(slice.a, len(s) - int(slice.b))
-    ## Returns string slice ``[slice.a, slice.b]``. ``first`` and ``last`` can be
-    ## negative. If they are negative position is counted from the end of string.
-
-proc substr*(s: ustring, first = 0): string =
+proc substr*[T](s: ustring; first: T = 0): string =
     ## copies a slice of `s` into a new string and returns this new
     ## string. The bounds `first` and `last` denote the indices of
     ## the first and last characters that shall be copied. If ``last``
@@ -540,7 +516,7 @@ proc substr*(s: ustring, first = 0): string =
     ## or `limit`:idx: a string's length.
     return s.slice(first)
 
-proc substr*(s: ustring, first, last: int): string =
+proc substr*[T, U](s: ustring; first: T; last: U): string =
     ## copies a slice of `s` into a new string and returns this new
     ## string. The bounds `first` and `last` denote the indices of
     ## the first and last characters that shall be copied. If ``last``
@@ -549,45 +525,29 @@ proc substr*(s: ustring, first, last: int): string =
     ## or `limit`:idx: a string's length.
     return s.slice(first, last)
 
-proc `[]`*(s: ustring, slice: Slice[int]): ustring {.inline.} = s.slice(slice)
+proc `[]`*[T, U](s: ustring, slice: HSlice[T, U]): ustring {.inline.} = s.slice(slice)
     ## Returns string slice ``[slice.a, slice.b]``.
 
-proc `[]`*(s: ustring, slice: HSlice[int, BackwardsIndex]): ustring {.inline.} = s.slice(slice)
-    ## Returns string slice ``[slice.a, slice.b]``.
-
-proc `[]`*(s: ustring, i: int): ustring =
+proc `[]`*[T](s: ustring, i: T): ustring =
     ## Returns character index ``i``.
-    let o = s.offset(i)
+    let o = s.index(i)
     result = s.slice(o, o)
 
-proc splice*(s: ustring, first: int, last: int, replacement: ustring): ustring {.inline.} =
+proc splice*[T, U](s: ustring, first: T, last: U, replacement: ustring): ustring {.inline.} =
     ## Replaces ``[first, last]`` with ``replacement``.
-    result = ""
     if first > 0:
-        result &= s.slice(0, first - 1)
-    elif first < 0:
-        result &= s.slice(0, first)
+        result &= s.slice(0, s.index(first - 1))
     result &= replacement
-    if last == int.high or last > s.uhigh:
-        discard
-    elif last > 0:
-        result &= s.slice(last + 1)
-    else:
-        result &= s.slice(last)
+    if last < s.high:
+        result &= s.slice(s.index(last + 1))
 
-proc splice*(s: ustring, slice: Slice[int], replacement: ustring): ustring {.inline.} = s.splice(slice.a, slice.b, replacement)
+proc splice*[T, U](s: ustring, slice: HSlice[T, U], replacement: ustring): ustring {.inline.} = s.splice(slice.a, slice.b, replacement)
     ## Replaces ``[slice.a, slice.b]`` with ``replacement``.
 
-proc splice*(s: ustring, slice: HSlice[int, BackwardsIndex], replacement: ustring): ustring {.inline.} = s.splice(slice.a, len(s) - int(slice.b), replacement)
-    ## Replaces ``[slice.a, slice.b]`` with ``replacement``.
-
-proc `[]=`*(s: var ustring, slice: Slice[int], replacement: ustring) {.inline.} = s = s.splice(slice, replacement)
+proc `[]=`*[T, U](s: var ustring, slice: HSlice[T, U], replacement: ustring) {.inline.} = s = s.splice(slice, replacement)
     ## Replaces ``[slice.a, slice.b]`` with ``replacement`` in ``s``.
 
-proc `[]=`*(s: var ustring, slice: HSlice[int, BackwardsIndex], replacement: ustring) {.inline.} = s = s.splice(slice, replacement)
-    ## Replaces ``[slice.a, slice.b]`` with ``replacement`` in ``s``.
-
-proc `[]=`*(s: var ustring, i: int, replacement: ustring) {.inline.} = s = s.splice(i, i, replacement)
+proc `[]=`*[T](s: var ustring, i: T, replacement: ustring) {.inline.} = s = s.splice(i, i, replacement)
     ## Replaces character at position ``i`` with ``replacement`` in ``s``.
 
 proc upper*(s: ustring, locale: int=utf8envlocale()): ustring =
@@ -645,12 +605,12 @@ proc normalize*(s: ustring, flags: int): ustring =
 
 iterator items*(s: ustring): ustring =
     ## Loops ut-8 characters from the start.
-    for i in 0 .. s.uhigh:
+    for i in 0 .. s.high:
         yield s.slice(i, i)
 
 iterator ritems*(s: ustring): ustring =
     ## Loops utf-8 characters from the end.
-    for i in countdown(s.uhigh, 0):
+    for i in countdown(s.high, 0):
         yield s.slice(i, i)
 
 proc reversed*(s: ustring): ustring =
@@ -682,7 +642,7 @@ proc isAlphaNumeric*(s: ustring): bool = isCategory(s, UTF8_CATEGORY_ISALNUM)
 proc isWhitespace*(s: ustring): bool = isCategory(s, UTF8_CATEGORY_ISSPACE)
     ## Returns ``true`` if ``s`` is made of whitespace characters, ``false`` otherwise.
 
-proc startsWith*(s: ustring, substring: ustring): bool = s[0..substring.uhigh] == substring
+proc startsWith*(s: ustring, substring: ustring): bool = s[0..substring.high] == substring
     ## Returns ``true`` if ``s`` starts with substring ``substring``, ``false`` otherwise.
 
 proc endsWith*(s: ustring, substring: ustring): bool = s[s.len - substring.len..int.high] == substring
@@ -690,15 +650,15 @@ proc endsWith*(s: ustring, substring: ustring): bool = s[s.len - substring.len..
 
 proc find*(s: ustring, substring: ustring, start: int=0): int =
     ## Returns index of first occurrence of ``substring`` in ``s``, -1 if ``substring`` is not found. Search starts from beginning of string.
-    for i in s.offset(start) .. s.len - substring.uhigh:
-        if s[i..i + substring.uhigh] == substring:
+    for i in s.index(start) .. s.len - substring.high:
+        if s[i..i + substring.high] == substring:
             return i
     return -1
 
 proc rfind*(s: ustring, substring: ustring, start: int=int.high): int =
     ## Returns index of first occurrence of ``substring`` in ``s``, -1 if ``substring`` is not found. Search starts from end of string.
-    for i in countdown(s.offset(start) - substring.len, 0):
-        if s[i..i + substring.uhigh] == substring:
+    for i in countdown(s.index(start) - substring.high, 0):
+        if s[i..i + substring.high] == substring:
             return i
     return -1
 
@@ -710,7 +670,7 @@ proc replace*(s: ustring, find: ustring, replacement: ustring): ustring =
     result = s
     var i = result.find(find)
     while i >= 0:
-        result = result.splice(i, i + find.uhigh, replacement)
+        result = result.splice(i, i + find.high, replacement)
         i = result.find(find)
 
 proc count*(s: ustring, substring: ustring, overlapping: bool = false): int =
@@ -788,49 +748,39 @@ when defined(windows) and not defined(useWinAnsi):
 
 when isMainModule:
     import sugar
+    # Basic functionality
+
     doAssert u"abc".charLen(1) == 1
     doAssert u"ačc".charLen(1) == 2
-    doAssert "abcdefgh"[1..^2] == u"abcdefgh"[1..^2]
-    doAssert u"ąčęėįšųū„“".offset(1) == 1
-    doAssert u"ąčęėįšųū„“".offset(-1) == 9
-    doAssert u"ąčęėįšųū„“".offset(-2) == 8
-    doAssert u"ąčęėįšųū„“".offset() == 10
-    doAssert "ąčęėįšųū„“" == $(u"ąčęėįšųū„“")
+    doAssert u"ąčęėįšųū„“".index(1) == 1
+    doAssert u"ąčęėįšųū„“".index(^1) == 9
+    doAssert u"ąčęėįšųū„“".index(^2) == 8
+    doAssert u"ąčęėįšųū„“".index(int.high) == 9
     doAssert u"ąčęėįšųū„“".len == 10
     doAssert u"ąčęėįšųū„“".blen == "ąčęėįšųū„“".len
     doAssert u"ąčęėįšųū„“" == "ąčęėįšųū„“"
     doAssert u"ąčęėįšųū„“" == cstring("ąčęėįšųū„“")
     doAssert "a".toUString() == 'a'
     doAssert u"ąčęėįšųū„“" & u"ąčęėįšųū„“" == "ąčęėįšųū„“ąčęėįšųū„“"
-    block:
-        var s = u"ąčęėįšųū„“"
-        var refcount = s.getRefcount()
-        s.GC_ref()
-        doAssert s.getRefcount() == (refcount + 1)
-        s.GC_unref()
-        doAssert s.getRefcount() == refcount
+    
+    # Behaviour matching
+    doAssert "ąčęėįšųū„“" == $(u"ąčęėįšųū„“")
+    doAssert "abcdefgh"[2] == u"abcdefgh"[2]
+    doAssert "abcdefgh"[^2] == u"abcdefgh"[^2]
+    doAssert "abcdefgh"[1..^2] == u"abcdefgh"[1..^2]
+    doAssert substr(u"abcdefgh", 3) == substr("abcdefgh", 3)
+    doAssert substr(u"abcdefgh", 1, 3) == substr("abcdefgh", 1, 3)
+    
     doAssert u"ąčęėįšųū„“"[2..int.high] == "ęėįšųū„“"
-    doAssert u"ąčęėįšųū„“"[-1..int.high] == u"“"
-    doAssert u"ąčęėįšųū„“"[4..-2] == "įšųū"
-    doAssert u"ąčęėįšųū„“"[-4..-2] == "ųū"
     doAssert u"ąčęėįšųū„“"[1..^2] == "čęėįšųū„"
-    doAssert u"ąčęėįšųū„“"[1..-1] == "čęėįšųū„"
-    doAssert u"ąčęėįšųū„“"[1..-0] == "čęėįšųū„“"
-    try:
-        discard u"ąčęėįšųū„“".slice(-4, -6)
-        doAssert false, "slice() invalid parameter check failed"
-    except UnicodeError:
-        discard
 
     doAssert u"ąčęėįšųū„“".splice(0, 4, "?") == "?šųū„“"
+    doAssert u"ąčęėįšųū„“".splice(5, 9, "?") == "ąčęėį?"
     doAssert u"ąčęėįšųū„“".splice(2, 4, "?") == "ąč?šųū„“"
-    doAssert u"ąčęėįšųū„“".splice(-8, 4, "?") == "ąč?šųū„“"
     block:
         var x = u"ąčęėįšųū„“"
-        x[-5..-1] = u"!!!"
-        doAssert x == "ąčęėį!!!“"
         x[1] = "我"
-        doAssert x == "ą我ęėį!!!“"
+        doAssert x == "ą我ęėįšųū„“"
         doAssert x[1] == "我"
     doAssert u"ąčęėįšųū".upper() == "ĄČĘĖĮŠŲŪ"
     doAssert u"ĄČĘĖĮŠŲŪ".lower() == "ąčęėįšųū"
@@ -852,7 +802,6 @@ when isMainModule:
     doAssert u"ĄūųšįėęčąĄūųšįėęčą".find("Ą", 1) == 9
     doAssert u"ĄūųšįėęčąĄūųšįėęčą".rfind("š") == 12
     doAssert u"ĄūųšįėęčąĄūųšįėęčą".rfind("ą") == 17
-    doAssert u"ĄūųšįėęčąĄūųšįėęčą".rfind("ą", -1) == 8
     doAssert u"ĄūųšįėęčąĄūųšįėęčą".find("Ą") == 0
     doAssert u"ĄūųšįėęčąĄūųšįėęčą".rfind("ą") == 17
     doAssert u"ĄūųšįėęčąĄūųšįėęčą".rfind("測") == -1
@@ -870,10 +819,6 @@ when isMainModule:
     doAssert lc[p | (p <- u"ąčęėįšųū„“".split("ėį")), ustring] == @[u"ąčę", u"šųū„“"]
     doAssert lc[c | (c <- u"ąčęėįšųū„“".items()), ustring] == @[u"ą", u"č", u"ę", u"ė", u"į", u"š", u"ų", u"ū", u"„", u"“"]
     doAssert lc[c | (c <- u"ąčęėįšųū„“".ritems()), ustring] == @[u"“", u"„", u"ū", u"ų", u"š", u"į", u"ė", u"ę", u"č", u"ą"]
-    doAssert u"ąčęėįšųū„“".slice(1, -1) == u"ąčęėįšųū„“"[1..^2]
-    doAssert u"ąčęėįšųū„“"[-3..-1] == u"ąčęėįšųū„“"[-3..^2]
-    doAssert substr(u"abcdefgh", 3) == substr("abcdefgh", 3)
-    doAssert substr(u"abcdefgh", 1, 3) == substr("abcdefgh", 1, 3)
     doAssert substr(u"ąčęėįšųū„“", 3) == "ėįšųū„“"
-    doAssert substr(u"ąčęėįšųū„“", 1, 3) == "čęė"
+    # doAssert substr(u"ąčęėįšųū„“", 1, 3) == "čęė" # https://github.com/nim-lang/Nim/issues/11622
     echo "Tests ok"
