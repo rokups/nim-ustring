@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.2.5"
+version       = "0.3.0"
 author        = "Rokas Kupstys"
 description   = "utf-8 string"
 license       = "MIT"
@@ -9,4 +9,4 @@ installFiles  = @["ustring.nim"]
 
 # Dependencies
 
-requires "nim >= 0.18.0"
+requires "nim >= 0.20.0"
