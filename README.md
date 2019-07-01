@@ -12,7 +12,6 @@ Features
 * Common string manipulation functions
 * Converters to and from `string`, `cstring`, `char`
 * Nim string slicing with roof (^) operator
-* Pythonic string slicing with negative indexes
 * String manipulation functions using inclusive ranges
 
 Usage
