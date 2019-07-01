@@ -507,7 +507,7 @@ proc slice*[T](s: ustring, first: T): ustring = s.slice(first, s.high)
 proc slice*[T, U](s: ustring, slice: HSlice[T, U]): ustring {.inline.} = s.slice(slice.a, slice.b)
     ## Returns string slice ``[slice.a, slice.b]``.
 
-proc substr*[T](s: ustring; first: T = 0): string =
+proc substr*(s: ustring; first: int = 0): string =
     ## copies a slice of `s` into a new string and returns this new
     ## string. The bounds `first` and `last` denote the indices of
     ## the first and last characters that shall be copied. If ``last``
@@ -516,7 +516,7 @@ proc substr*[T](s: ustring; first: T = 0): string =
     ## or `limit`:idx: a string's length.
     return s.slice(first)
 
-proc substr*[T, U](s: ustring; first: T; last: U): string =
+proc substr*(s: ustring; first, last: int): string =
     ## copies a slice of `s` into a new string and returns this new
     ## string. The bounds `first` and `last` denote the indices of
     ## the first and last characters that shall be copied. If ``last``
@@ -820,5 +820,5 @@ when isMainModule:
     doAssert lc[c | (c <- u"ąčęėįšųū„“".items()), ustring] == @[u"ą", u"č", u"ę", u"ė", u"į", u"š", u"ų", u"ū", u"„", u"“"]
     doAssert lc[c | (c <- u"ąčęėįšųū„“".ritems()), ustring] == @[u"“", u"„", u"ū", u"ų", u"š", u"į", u"ė", u"ę", u"č", u"ą"]
     doAssert substr(u"ąčęėįšųū„“", 3) == "ėįšųū„“"
-    # doAssert substr(u"ąčęėįšųū„“", 1, 3) == "čęė" # https://github.com/nim-lang/Nim/issues/11622
+    doAssert substr(u"ąčęėįšųū„“", 1, 3) == "čęė"
     echo "Tests ok"
